@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use wasm_bindgen::{prelude::wasm_bindgen, JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::Response;
+use std::cell::RefCell;
 
 /// Represents the global object in the JavaScript context
 #[wasm_bindgen]
