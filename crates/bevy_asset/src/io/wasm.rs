@@ -8,8 +8,6 @@ use std::path::{Path, PathBuf};
 use wasm_bindgen::{prelude::wasm_bindgen, JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::Response;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 /// Represents the global object in the JavaScript context
 #[wasm_bindgen]
@@ -58,22 +56,18 @@ impl HttpWasmAssetReader {
         // The JS global scope includes a self-reference via a specialising name, which can be used to determine the type of global context available.
         let global: Global = js_sys::global().unchecked_into();
         let global_ref = Rc::new(RefCell::new(global));
-
-        let promise = {
-            let global_ref = global_ref.clone();
-            if !global_ref.borrow().window().is_undefined() {
-                let window: web_sys::Window = global_ref.borrow().unchecked_into();
-                window.fetch_with_str(path.to_str().unwrap())
-            } else if !global_ref.borrow().worker().is_undefined() {
-                let worker: web_sys::WorkerGlobalScope = global_ref.borrow().unchecked_into();
-                worker.fetch_with_str(path.to_str().unwrap())
-            } else {
-                let error = std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "Unsupported JavaScript global context",
-                );
-                return Err(AssetReaderError::Io(error.into()));
-            }
+        let promise = if !global.window().is_undefined() {
+            let window: web_sys::Window = global.unchecked_into();
+            window.fetch_with_str(path.to_str().unwrap())
+        } else if !global.worker().is_undefined() {
+            let worker: web_sys::WorkerGlobalScope = global.unchecked_into();
+            worker.fetch_with_str(path.to_str().unwrap())
+        } else {
+            let error = std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Unsupported JavaScript global context",
+            );
+            return Err(AssetReaderError::Io(error.into()));
         };
         let resp_value = JsFuture::from(promise)
             .await
