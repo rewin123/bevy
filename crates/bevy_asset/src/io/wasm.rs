@@ -55,7 +55,6 @@ impl HttpWasmAssetReader {
     async fn fetch_bytes<'a>(&self, path: PathBuf) -> Result<Box<Reader<'a>>, AssetReaderError> {
         // The JS global scope includes a self-reference via a specialising name, which can be used to determine the type of global context available.
         let global: Global = js_sys::global().unchecked_into();
-        let global_ref = Rc::new(RefCell::new(global));
         let promise = if !global.window().is_undefined() {
             let window: web_sys::Window = global.unchecked_into();
             window.fetch_with_str(path.to_str().unwrap())
