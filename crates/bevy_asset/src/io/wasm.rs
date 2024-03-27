@@ -53,22 +53,8 @@ fn js_value_to_err<'a>(context: &'a str) -> impl FnOnce(JsValue) -> std::io::Err
 
 impl HttpWasmAssetReader {
     async fn fetch_bytes<'a>(&self, path: PathBuf) -> Result<Box<Reader<'a>>, AssetReaderError> {
-        // The JS global scope includes a self-reference via a specialising name, which can be used to determine the type of global context available.
-        let global: Global = js_sys::global().unchecked_into();
-        let promise = if !global.window().is_undefined() {
-            let window: web_sys::Window = global.unchecked_into();
-            window.fetch_with_str(path.to_str().unwrap())
-        } else if !global.worker().is_undefined() {
-            let worker: web_sys::WorkerGlobalScope = global.unchecked_into();
-            worker.fetch_with_str(path.to_str().unwrap())
-        } else {
-            let error = std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Unsupported JavaScript global context",
-            );
-            return Err(AssetReaderError::Io(error.into()));
-        };
-        let resp_value = JsFuture::from(promise)
+        let window = web_sys::window().unwrap();
+        let resp_value = JsFuture::from(window.fetch_with_str(path.to_str().unwrap()))
             .await
             .map_err(js_value_to_err("fetch path"))?;
         let resp = resp_value
@@ -82,7 +68,10 @@ impl HttpWasmAssetReader {
                 Ok(reader)
             }
             404 => Err(AssetReaderError::NotFound(path)),
-            status => Err(AssetReaderError::HttpError(status as u16)),
+            status => Err(AssetReaderError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Encountered unexpected HTTP status {status}"),
+            ))),
         }
     }
 }
