@@ -12,7 +12,7 @@ use crate::{
 };
 use bevy_ptr::{ThinSlicePtr, UnsafeCellDeref};
 use bevy_utils::all_tuples;
-use std::{cell::UnsafeCell, marker::PhantomData};
+use std::{cell::UnsafeCell, marker::PhantomData, sync::{atomic::AtomicU32, Arc}};
 
 /// Types that can be fetched from a [`World`] using a [`Query`].
 ///
@@ -1262,6 +1262,8 @@ pub struct WriteFetch<'w, T> {
 
     last_run: Tick,
     this_run: Tick,
+
+    archetype: Option<&'w Archetype>
 }
 
 impl<T> Clone for WriteFetch<'_, T> {
@@ -1313,6 +1315,7 @@ unsafe impl<'__w, T: Component> WorldQuery for &'__w mut T {
             }),
             last_run,
             this_run,
+            archetype: None,
         }
     }
 
@@ -1327,9 +1330,10 @@ unsafe impl<'__w, T: Component> WorldQuery for &'__w mut T {
     unsafe fn set_archetype<'w>(
         fetch: &mut WriteFetch<'w, T>,
         component_id: &ComponentId,
-        _archetype: &'w Archetype,
+        archetype: &'w Archetype,
         table: &'w Table,
     ) {
+        fetch.archetype = Some(archetype);
         if Self::IS_DENSE {
             // SAFETY: `set_archetype`'s safety rules are a super set of the `set_table`'s ones.
             unsafe {
@@ -1360,7 +1364,7 @@ unsafe impl<'__w, T: Component> WorldQuery for &'__w mut T {
     unsafe fn fetch<'w>(
         fetch: &mut Self::Fetch<'w>,
         entity: Entity,
-        table_row: TableRow,
+        table_row: TableRow
     ) -> Self::Item<'w> {
         match T::STORAGE_TYPE {
             StorageType::Table => {
@@ -1385,6 +1389,9 @@ unsafe impl<'__w, T: Component> WorldQuery for &'__w mut T {
                         changed: changed.deref_mut(),
                         this_run: fetch.this_run,
                         last_run: fetch.last_run,
+                        archetype_any_changed: fetch.archetype.map(|archetype| {
+                            archetype.get_any_change_arc()
+                        }),
                     },
                     #[cfg(feature = "track_change_detection")]
                     changed_by: caller.deref_mut(),
@@ -1403,7 +1410,9 @@ unsafe impl<'__w, T: Component> WorldQuery for &'__w mut T {
 
                 Mut {
                     value: component.assert_unique().deref_mut(),
-                    ticks: TicksMut::from_tick_cells(ticks, fetch.last_run, fetch.this_run),
+                    ticks: TicksMut::from_tick_cells(ticks, fetch.last_run, fetch.this_run, fetch.archetype.map(|archetype| {
+                        archetype.get_any_change_arc()
+                    })),
                     #[cfg(feature = "track_change_detection")]
                     changed_by: _caller.deref_mut(),
                 }
