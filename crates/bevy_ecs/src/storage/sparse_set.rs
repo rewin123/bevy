@@ -8,7 +8,7 @@ use bevy_ptr::{OwningPtr, Ptr};
 use nonmax::NonMaxUsize;
 #[cfg(feature = "track_change_detection")]
 use std::panic::Location;
-use std::{cell::UnsafeCell, hash::Hash, marker::PhantomData};
+use std::{cell::UnsafeCell, hash::Hash, marker::PhantomData, sync::{atomic::AtomicU32, Arc}};
 
 type EntityIndex = u32;
 

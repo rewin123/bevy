@@ -21,7 +21,7 @@
 
 use crate::{
     bundle::BundleId,
-    component::{ComponentId, Components, RequiredComponentConstructor, StorageType},
+    component::{ComponentId, Components, RequiredComponentConstructor, StorageType, Tick},
     entity::{Entity, EntityLocation},
     observer::Observers,
     storage::{ImmutableSparseSet, SparseArray, SparseSet, SparseSetIndex, TableId, TableRow},
@@ -29,7 +29,7 @@ use crate::{
 use bevy_utils::HashMap;
 use std::{
     hash::Hash,
-    ops::{Index, IndexMut, RangeFrom},
+    ops::{Index, IndexMut, RangeFrom}, sync::{atomic::AtomicU32, Arc},
 };
 
 /// An opaque location within a [`Archetype`].
@@ -368,6 +368,15 @@ pub struct Archetype {
     entities: Vec<ArchetypeEntity>,
     components: ImmutableSparseSet<ComponentId, ArchetypeComponentInfo>,
     pub(crate) flags: ArchetypeFlags,
+
+    // Last change tick when entity was added
+    lass_add_tick: Tick, 
+    // Last change tick when entity was removed
+    last_remove_tick: Tick,
+    // Last change tick when entity was added or removed
+    last_structural_change_tick: Tick,
+    // Last change tick when any component in any entity in this archetype was changed. (It can be changed in separate threads, so we need arc)
+    last_change_tick: Arc<AtomicU32>,
 }
 
 impl Archetype {
@@ -430,6 +439,12 @@ impl Archetype {
             components: archetype_components.into_immutable(),
             edges: Default::default(),
             flags,
+
+            //ticks
+            lass_add_tick: Tick::default(),
+            last_remove_tick: Tick::default(),
+            last_structural_change_tick: Tick::default(),
+            last_change_tick: Arc::new(AtomicU32::new(0)),
         }
     }
 
@@ -550,9 +565,13 @@ impl Archetype {
         &mut self,
         entity: Entity,
         table_row: TableRow,
+        // Change tick when the entity was created (for query change detection)
+        world_change_tick: Tick, 
     ) -> EntityLocation {
         let archetype_row = ArchetypeRow::new(self.entities.len());
         self.entities.push(ArchetypeEntity { entity, table_row });
+
+        self.set_add_tick(world_change_tick);
 
         EntityLocation {
             archetype_id: self.id,
@@ -573,9 +592,10 @@ impl Archetype {
     /// # Panics
     /// This function will panic if `index >= self.len()`
     #[inline]
-    pub(crate) fn swap_remove(&mut self, row: ArchetypeRow) -> ArchetypeSwapRemoveResult {
+    pub(crate) fn swap_remove(&mut self, row: ArchetypeRow, change_tick: Tick) -> ArchetypeSwapRemoveResult {
         let is_last = row.index() == self.entities.len() - 1;
         let entity = self.entities.swap_remove(row.index());
+        self.set_remove_tick(change_tick);
         ArchetypeSwapRemoveResult {
             swapped_entity: if is_last {
                 None
@@ -628,8 +648,9 @@ impl Archetype {
     }
 
     /// Clears all entities from the archetype.
-    pub(crate) fn clear_entities(&mut self) {
+    pub(crate) fn clear_entities(&mut self, world_change_tick: Tick) {
         self.entities.clear();
+        self.set_remove_tick(world_change_tick);
     }
 
     /// Returns true if any of the components in this archetype have `on_add` hooks
@@ -686,6 +707,27 @@ impl Archetype {
     #[inline]
     pub fn has_remove_observer(&self) -> bool {
         self.flags().contains(ArchetypeFlags::ON_REMOVE_OBSERVER)
+    }
+
+
+    pub fn set_add_tick(&mut self, tick: Tick) {
+        self.last_change_tick.store(tick.get(), std::sync::atomic::Ordering::SeqCst);
+        self.last_structural_change_tick = tick;
+        self.lass_add_tick = tick;
+    }
+
+    pub fn set_remove_tick(&mut self, tick: Tick) {
+        self.last_remove_tick = tick;
+        self.last_structural_change_tick = tick;
+        self.last_change_tick.store(tick.get(), std::sync::atomic::Ordering::SeqCst);
+    }
+
+    pub fn set_change_tick(&mut self, tick: Tick) {
+        self.last_change_tick.store(tick.get(), std::sync::atomic::Ordering::SeqCst);
+    }
+
+    pub fn get_any_change_arc(&self) -> Arc<AtomicU32> {
+        self.last_change_tick.clone()
     }
 }
 
@@ -949,9 +991,9 @@ impl Archetypes {
     }
 
     /// Clears all entities from all archetypes.
-    pub(crate) fn clear_entities(&mut self) {
+    pub(crate) fn clear_entities(&mut self, world_change_tick: Tick) {
         for archetype in &mut self.archetypes {
-            archetype.clear_entities();
+            archetype.clear_entities(world_change_tick);
         }
     }
 

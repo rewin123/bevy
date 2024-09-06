@@ -2,7 +2,7 @@ use crate::{
     archetype::{Archetype, ArchetypeId, Archetypes},
     bundle::{Bundle, BundleId, BundleInfo, BundleInserter, DynamicBundle, InsertMode},
     change_detection::MutUntyped,
-    component::{Component, ComponentId, ComponentTicks, Components, StorageType},
+    component::{Component, ComponentId, ComponentTicks, Components, StorageType, Tick},
     entity::{Entities, Entity, EntityLocation},
     event::Event,
     observer::{Observer, Observers},
@@ -903,6 +903,7 @@ impl<'w> EntityWorldMut<'w> {
     #[must_use]
     pub fn take<T: Bundle>(&mut self) -> Option<T> {
         let world = &mut self.world;
+        let world_change_tick = world.read_change_tick();
         let storages = &mut world.storages;
         let components = &mut world.components;
         let bundle_id = world.bundles.init_info::<T>(components, storages);
@@ -988,6 +989,7 @@ impl<'w> EntityWorldMut<'w> {
                 archetypes,
                 storages,
                 new_archetype_id,
+                world_change_tick
             );
         }
         Some(result)
@@ -1013,9 +1015,10 @@ impl<'w> EntityWorldMut<'w> {
         archetypes: &mut Archetypes,
         storages: &mut Storages,
         new_archetype_id: ArchetypeId,
+        world_change_tick: Tick,
     ) {
         let old_archetype = &mut archetypes[old_archetype_id];
-        let remove_result = old_archetype.swap_remove(old_location.archetype_row);
+        let remove_result = old_archetype.swap_remove(old_location.archetype_row, world_change_tick);
         // if an entity was moved into this entity's archetype row, update its archetype row
         if let Some(swapped_entity) = remove_result.swapped_entity {
             let swapped_location = entities.get(swapped_entity).unwrap();
@@ -1035,7 +1038,7 @@ impl<'w> EntityWorldMut<'w> {
         let new_archetype = &mut archetypes[new_archetype_id];
 
         let new_location = if old_table_id == new_archetype.table_id() {
-            new_archetype.allocate(entity, old_table_row)
+            new_archetype.allocate(entity, old_table_row, world_change_tick)
         } else {
             let (old_table, new_table) = storages
                 .tables
@@ -1050,7 +1053,7 @@ impl<'w> EntityWorldMut<'w> {
             };
 
             // SAFETY: move_result.new_row is a valid position in new_archetype's table
-            let new_location = unsafe { new_archetype.allocate(entity, move_result.new_row) };
+            let new_location = unsafe { new_archetype.allocate(entity, move_result.new_row, world_change_tick) };
 
             // if an entity was moved into this entity's table row, update its table row
             if let Some(swapped_entity) = move_result.swapped_entity {
@@ -1160,6 +1163,7 @@ impl<'w> EntityWorldMut<'w> {
             &mut world.archetypes,
             &mut world.storages,
             new_archetype_id,
+            world.last_change_tick
         );
 
         new_location
@@ -1248,6 +1252,7 @@ impl<'w> EntityWorldMut<'w> {
     /// See [`World::despawn`] for more details.
     pub fn despawn(self) {
         let world = self.world;
+        let change_tick = world.change_tick();
         world.flush_entities();
         let archetype = &world.archetypes[self.location.archetype_id];
 
@@ -1283,7 +1288,7 @@ impl<'w> EntityWorldMut<'w> {
 
         {
             let archetype = &mut world.archetypes[self.location.archetype_id];
-            let remove_result = archetype.swap_remove(location.archetype_row);
+            let remove_result = archetype.swap_remove(location.archetype_row, change_tick);
             if let Some(swapped_entity) = remove_result.swapped_entity {
                 let swapped_location = world.entities.get(swapped_entity).unwrap();
                 // SAFETY: swapped_entity is valid and the swapped entity's components are

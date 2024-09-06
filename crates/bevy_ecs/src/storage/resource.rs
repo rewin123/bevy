@@ -144,7 +144,7 @@ impl<const SEND: bool> ResourceData<SEND> {
             // SAFETY: We have exclusive access to the underlying storage.
             value: unsafe { ptr.assert_unique() },
             // SAFETY: We have exclusive access to the underlying storage.
-            ticks: unsafe { TicksMut::from_tick_cells(ticks, last_run, this_run) },
+            ticks: unsafe { TicksMut::from_tick_cells(ticks, last_run, this_run, None) },
             #[cfg(feature = "track_change_detection")]
             // SAFETY: We have exclusive access to the underlying storage.
             changed_by: unsafe { _caller.deref_mut() },

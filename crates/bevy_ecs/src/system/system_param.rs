@@ -707,6 +707,7 @@ unsafe impl<'a, T: Resource> SystemParam for ResMut<'a, T> {
                 changed: value.ticks.changed,
                 last_run: system_meta.last_run,
                 this_run: change_tick,
+                archetype_any_changed: None,
             },
             #[cfg(feature = "track_change_detection")]
             changed_by: value.changed_by,
@@ -739,6 +740,7 @@ unsafe impl<'a, T: Resource> SystemParam for Option<ResMut<'a, T>> {
                     changed: value.ticks.changed,
                     last_run: system_meta.last_run,
                     this_run: change_tick,
+                    archetype_any_changed: None,
                 },
                 #[cfg(feature = "track_change_detection")]
                 changed_by: value.changed_by,
@@ -1329,7 +1331,7 @@ unsafe impl<'a, T: 'static> SystemParam for NonSendMut<'a, T> {
                 });
         NonSendMut {
             value: ptr.assert_unique().deref_mut(),
-            ticks: TicksMut::from_tick_cells(ticks, system_meta.last_run, change_tick),
+            ticks: TicksMut::from_tick_cells(ticks, system_meta.last_run, change_tick, None),
             #[cfg(feature = "track_change_detection")]
             changed_by: _caller.deref_mut(),
         }
@@ -1356,7 +1358,7 @@ unsafe impl<'a, T: 'static> SystemParam for Option<NonSendMut<'a, T>> {
             .get_non_send_with_ticks(component_id)
             .map(|(ptr, ticks, _caller)| NonSendMut {
                 value: ptr.assert_unique().deref_mut(),
-                ticks: TicksMut::from_tick_cells(ticks, system_meta.last_run, change_tick),
+                ticks: TicksMut::from_tick_cells(ticks, system_meta.last_run, change_tick, None),
                 #[cfg(feature = "track_change_detection")]
                 changed_by: _caller.deref_mut(),
             })

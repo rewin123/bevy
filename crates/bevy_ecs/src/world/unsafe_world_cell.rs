@@ -19,7 +19,7 @@ use crate::{
 use bevy_ptr::Ptr;
 #[cfg(feature = "track_change_detection")]
 use bevy_ptr::UnsafeCellDeref;
-use std::{any::TypeId, cell::UnsafeCell, fmt::Debug, marker::PhantomData, ptr};
+use std::{any::TypeId, cell::UnsafeCell, fmt::Debug, marker::PhantomData, ptr, sync::{atomic::AtomicU32, Arc}};
 
 /// Variant of the [`World`] where resource and component accesses take `&self`, and the responsibility to avoid
 /// aliasing violations are given to the caller instead of being checked at compile-time by rust's unique XOR shared rule.
@@ -487,7 +487,7 @@ impl<'w> UnsafeWorldCell<'w> {
         // - index is in-bounds because the column is initialized and non-empty
         // - the caller promises that no other reference to the ticks of the same row can exist at the same time
         let ticks = unsafe {
-            TicksMut::from_tick_cells(ticks, self.last_change_tick(), self.change_tick())
+            TicksMut::from_tick_cells(ticks, self.last_change_tick(), self.change_tick(), None)
         };
 
         Some(MutUntyped {
@@ -554,7 +554,7 @@ impl<'w> UnsafeWorldCell<'w> {
             // SAFETY: This function has exclusive access to the world so nothing aliases `ticks`.
             // - index is in-bounds because the column is initialized and non-empty
             // - no other reference to the ticks of the same row can exist at the same time
-            unsafe { TicksMut::from_tick_cells(ticks, self.last_change_tick(), change_tick) };
+            unsafe { TicksMut::from_tick_cells(ticks, self.last_change_tick(), change_tick, None) };
 
         Some(MutUntyped {
             // SAFETY: This function has exclusive access to the world so nothing aliases `ptr`.
@@ -772,7 +772,7 @@ impl<'w> UnsafeEntityCell<'w> {
                 self.entity,
                 self.location,
             )
-            .map(|(value, cells, _caller)| Ref {
+            .map(|(value, cells, archetype_tick, _caller)| Ref {
                 // SAFETY: returned component is of type T
                 value: value.deref::<T>(),
                 ticks: Ticks::from_tick_cells(cells, last_change_tick, change_tick),
@@ -873,10 +873,10 @@ impl<'w> UnsafeEntityCell<'w> {
                 self.entity,
                 self.location,
             )
-            .map(|(value, cells, _caller)| Mut {
+            .map(|(value, cells, arcetype_tick, _caller)| Mut {
                 // SAFETY: returned component is of type T
                 value: value.assert_unique().deref_mut::<T>(),
-                ticks: TicksMut::from_tick_cells(cells, last_change_tick, change_tick),
+                ticks: TicksMut::from_tick_cells(cells, last_change_tick, change_tick, arcetype_tick),
                 #[cfg(feature = "track_change_detection")]
                 changed_by: _caller.deref_mut(),
             })
@@ -935,13 +935,14 @@ impl<'w> UnsafeEntityCell<'w> {
                 self.entity,
                 self.location,
             )
-            .map(|(value, cells, _caller)| MutUntyped {
+            .map(|(value, cells, archetype_tick, _caller)| MutUntyped {
                 // SAFETY: world access validated by caller and ties world lifetime to `MutUntyped` lifetime
                 value: value.assert_unique(),
                 ticks: TicksMut::from_tick_cells(
                     cells,
                     self.world.last_change_tick(),
                     self.world.change_tick(),
+                    archetype_tick
                 ),
                 #[cfg(feature = "track_change_detection")]
                 changed_by: _caller.deref_mut(),
@@ -1021,10 +1022,14 @@ unsafe fn get_component_and_ticks(
     storage_type: StorageType,
     entity: Entity,
     location: EntityLocation,
-) -> Option<(Ptr<'_>, TickCells<'_>, MaybeUnsafeCellLocation<'_>)> {
+) -> Option<(Ptr<'_>, TickCells<'_>, Option<Arc<AtomicU32>>, MaybeUnsafeCellLocation<'_>)> {
     match storage_type {
         StorageType::Table => {
             let components = world.fetch_table(location, component_id)?;
+            let arhcetype = world.archetypes().get(location.archetype_id);
+            let archetype_tick = arhcetype.map(|archetype| 
+                archetype.get_any_change_arc()
+            );
 
             // SAFETY: archetypes only store valid table_rows and caller ensure aliasing rules
             Some((
@@ -1033,13 +1038,26 @@ unsafe fn get_component_and_ticks(
                     added: components.get_added_tick_unchecked(location.table_row),
                     changed: components.get_changed_tick_unchecked(location.table_row),
                 },
+                archetype_tick,
                 #[cfg(feature = "track_change_detection")]
                 components.get_changed_by_unchecked(location.table_row),
                 #[cfg(not(feature = "track_change_detection"))]
                 (),
             ))
         }
-        StorageType::SparseSet => world.fetch_sparse_set(component_id)?.get_with_ticks(entity),
+        StorageType::SparseSet => {
+            if let Some((ptr, tick_cell, change_location)) = world.fetch_sparse_set(component_id)?.get_with_ticks(entity) {
+                Some((
+                    ptr,
+                    tick_cell,
+                    world.archetypes().get(location.archetype_id).map(|archetype| archetype.get_any_change_arc()),
+                    change_location,
+                ))
+            } else {
+                None
+            }
+            
+        }
     }
 }
 

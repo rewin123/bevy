@@ -938,6 +938,8 @@ impl<'w> BundleInserter<'w> {
                     #[cfg(feature = "track_change_detection")]
                     caller,
                 );
+                // set that archetype has changed
+                archetype.set_change_tick(self.change_tick);
 
                 (archetype, location)
             }
@@ -950,7 +952,7 @@ impl<'w> BundleInserter<'w> {
                     (&mut world.storages.sparse_sets, &mut world.entities)
                 };
 
-                let result = archetype.swap_remove(location.archetype_row);
+                let result = archetype.swap_remove(location.archetype_row, self.change_tick);
                 if let Some(swapped_entity) = result.swapped_entity {
                     let swapped_location =
                         // SAFETY: If the swap was successful, swapped_entity must be valid.
@@ -965,7 +967,7 @@ impl<'w> BundleInserter<'w> {
                         },
                     );
                 }
-                let new_location = new_archetype.allocate(entity, result.table_row);
+                let new_location = new_archetype.allocate(entity, result.table_row, self.change_tick);
                 entities.set(entity.index(), new_location);
                 bundle_info.write_components(
                     table,
@@ -1000,7 +1002,7 @@ impl<'w> BundleInserter<'w> {
                         &mut world.entities,
                     )
                 };
-                let result = archetype.swap_remove(location.archetype_row);
+                let result = archetype.swap_remove(location.archetype_row, self.change_tick);
                 if let Some(swapped_entity) = result.swapped_entity {
                     let swapped_location =
                         // SAFETY: If the swap was successful, swapped_entity must be valid.
@@ -1018,7 +1020,7 @@ impl<'w> BundleInserter<'w> {
                 // PERF: store "non bundle" components in edge, then just move those to avoid
                 // redundant copies
                 let move_result = table.move_to_superset_unchecked(result.table_row, new_table);
-                let new_location = new_archetype.allocate(entity, move_result.new_row);
+                let new_location = new_archetype.allocate(entity, move_result.new_row, self.change_tick);
                 entities.set(entity.index(), new_location);
 
                 // if an entity was moved into this entity's table spot, update its table row
@@ -1201,7 +1203,7 @@ impl<'w> BundleSpawner<'w> {
                 (&mut world.storages.sparse_sets, &mut world.entities)
             };
             let table_row = table.allocate(entity);
-            let location = archetype.allocate(entity, table_row);
+            let location = archetype.allocate(entity, table_row, self.change_tick);
             bundle_info.write_components(
                 table,
                 sparse_sets,
