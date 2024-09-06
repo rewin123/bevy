@@ -324,6 +324,9 @@ macro_rules! change_detection_mut_impl {
             #[track_caller]
             fn set_changed(&mut self) {
                 *self.ticks.changed = self.ticks.this_run;
+                if let Some(tick) = &self.ticks.archetype_any_changed {
+                    tick.store(self.ticks.this_run.get(), std::sync::atomic::Ordering::Relaxed);
+                }
                 #[cfg(feature = "track_change_detection")]
                 {
                     *self.changed_by = Location::caller();

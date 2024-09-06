@@ -76,6 +76,7 @@ pub struct QueryState<D: QueryData, F: QueryFilter = ()> {
     pub(super) is_dense: bool,
     pub(crate) fetch_state: D::State,
     pub(crate) filter_state: F::State,
+    pub(crate) last_run_tick: Tick,
     #[cfg(feature = "trace")]
     par_iter_span: Span,
 }
@@ -214,6 +215,7 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
             component_access,
             matched_tables: Default::default(),
             matched_archetypes: Default::default(),
+            last_run_tick: world.read_change_tick(),
             #[cfg(feature = "trace")]
             par_iter_span: bevy_utils::tracing::info_span!(
                 "par_for_each",
@@ -240,6 +242,7 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
             component_access: builder.access().clone(),
             matched_tables: Default::default(),
             matched_archetypes: Default::default(),
+            last_run_tick: builder.world().read_change_tick(),
             #[cfg(feature = "trace")]
             par_iter_span: bevy_utils::tracing::info_span!(
                 "par_for_each",
@@ -579,6 +582,7 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
             component_access: self.component_access.clone(),
             matched_tables: self.matched_tables.clone(),
             matched_archetypes: self.matched_archetypes.clone(),
+            last_run_tick: unsafe {world.world().read_change_tick()},
             #[cfg(feature = "trace")]
             par_iter_span: bevy_utils::tracing::info_span!(
                 "par_for_each",
@@ -701,6 +705,7 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
             component_access: joined_component_access,
             matched_tables,
             matched_archetypes,
+            last_run_tick: unsafe {world.world().read_change_tick()},
             #[cfg(feature = "trace")]
             par_iter_span: bevy_utils::tracing::info_span!(
                 "par_for_each",
