@@ -1346,7 +1346,6 @@ mod tests {
             changed: Tick::new(3),
         };
         let archetype_changed = ArchetypeChangeRef {
-            last_change_tick: Arc::new(AtomicU32::new(3)),
             component_change_tick: Arc::new(AtomicU32::new(3)),
         };
         let mut res = R {};
@@ -1411,7 +1410,6 @@ mod tests {
             changed: Tick::new(2),
         };
         let archetype_changed = ArchetypeChangeRef {
-            last_change_tick: Arc::new(AtomicU32::new(3)),
             component_change_tick: Arc::new(AtomicU32::new(3)),
         };
         let ticks = TicksMut {
@@ -1506,7 +1504,6 @@ mod tests {
             changed: Tick::new(2),
         };
         let archetype_changed = ArchetypeChangeRef {
-            last_change_tick: Arc::new(AtomicU32::new(2)),
             component_change_tick: Arc::new(AtomicU32::new(2)),
         };
         let ticks = TicksMut {
@@ -1550,7 +1547,6 @@ mod tests {
             changed: Tick::new(2),
         };
         let archetype_changed = ArchetypeChangeRef {
-            last_change_tick: Arc::new(AtomicU32::new(2)),
             component_change_tick: Arc::new(AtomicU32::new(2)),
         };
         let ticks = TicksMut {
@@ -1577,6 +1573,5 @@ mod tests {
         assert_eq!(3, into_mut.ticks.last_run.get());
         assert_eq!(4, into_mut.ticks.this_run.get());
         assert_eq!(2, into_mut.ticks.archetype_changed.as_ref().unwrap().last_change_tick.load(std::sync::atomic::Ordering::Relaxed));
-        assert_eq!(2, into_mut.ticks.archetype_changed.as_ref().unwrap().component_change_tick.load(std::sync::atomic::Ordering::Relaxed));
     }
 }

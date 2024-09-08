@@ -1389,9 +1389,9 @@ unsafe impl<'__w, T: Component> WorldQuery for &'__w mut T {
                         changed: changed.deref_mut(),
                         this_run: fetch.this_run,
                         last_run: fetch.last_run,
-                        archetype_any_changed: fetch.archetype.map(|archetype| {
-                            archetype.get_any_change_arc()
-                        }),
+                        archetype_changed: fetch.archetype.map(|archetype| {
+                            archetype.get_change_ref()
+                        })
                     },
                     #[cfg(feature = "track_change_detection")]
                     changed_by: caller.deref_mut(),

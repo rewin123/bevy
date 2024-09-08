@@ -356,7 +356,6 @@ bitflags::bitflags! {
 }
 
 pub(crate) struct ArchetypeChangeTicks {
-    pub(crate) last_change_tick: Arc<AtomicU32>,
     pub(crate) last_structural_change_tick: Tick,
     pub(crate) lass_add_tick: Tick,
     pub(crate) last_remove_tick: Tick,
@@ -367,7 +366,6 @@ impl ArchetypeChangeTicks {
 
     pub fn from_component_set(component_ticks: SparseSet<ComponentId, Arc<AtomicU32>>) -> Self {
         Self {
-            last_change_tick: Arc::new(AtomicU32::new(0)),
             last_structural_change_tick: Tick::new(0),
             lass_add_tick: Tick::new(0),
             last_remove_tick: Tick::new(0),
@@ -378,20 +376,17 @@ impl ArchetypeChangeTicks {
     pub fn set_add(&mut self, tick: Tick) {
         self.lass_add_tick = tick;
         self.last_structural_change_tick = tick;
-        self.last_change_tick.store(tick.get(), std::sync::atomic::Ordering::SeqCst);
     }
 
     pub fn set_remove(&mut self, tick: Tick) {
         self.last_remove_tick = tick;
         self.last_structural_change_tick = tick;
-        self.last_change_tick.store(tick.get(), std::sync::atomic::Ordering::SeqCst);
     }
 
     pub fn set_component(&mut self, component_id: ComponentId, tick: Tick) {
         if let Some(change_tick) = self.component_change_ticks.get(component_id) {
             change_tick.store(tick.get(), std::sync::atomic::Ordering::SeqCst);
         }
-        self.last_change_tick.store(tick.get(), std::sync::atomic::Ordering::SeqCst);
     }
 
     pub fn get_component_ref(&self, component_id: ComponentId) -> ArchetypeChangeRef {
@@ -403,7 +398,6 @@ impl ArchetypeChangeTicks {
         };
 
         ArchetypeChangeRef {
-            last_change_tick: self.last_change_tick.clone(),
             component_change_tick
         }
     }
@@ -412,13 +406,11 @@ impl ArchetypeChangeTicks {
 /// Used for tracking changes to an [`Archetype`] in [`Mut`] and [`MutUntyped`]
 /// Store pointers to the component change tick and any archetype change tick
 pub(crate) struct ArchetypeChangeRef {
-    pub(crate) last_change_tick: Arc<AtomicU32>,
     pub(crate) component_change_tick: Arc<AtomicU32>,
 }
 
 impl ArchetypeChangeRef {
     pub fn set_tick(&self, tick: Tick) {
-        self.last_change_tick.store(tick.get(), std::sync::atomic::Ordering::SeqCst);
         self.component_change_tick.store(tick.get(), std::sync::atomic::Ordering::SeqCst);
     }
 
@@ -795,7 +787,6 @@ impl Archetype {
             .unwrap()
             .load(std::sync::atomic::Ordering::Relaxed);
         Tick::new(tick)
-            
     }
 
     pub(crate) fn set_component_change_tick(&mut self, component_id: ComponentId, tick: Tick) {
