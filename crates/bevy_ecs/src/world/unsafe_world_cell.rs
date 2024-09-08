@@ -4,7 +4,7 @@
 
 use super::{Mut, Ref, World, WorldId};
 use crate::{
-    archetype::{Archetype, Archetypes},
+    archetype::{Archetype, ArchetypeChangeRef, Archetypes},
     bundle::Bundles,
     change_detection::{MaybeUnsafeCellLocation, MutUntyped, Ticks, TicksMut},
     component::{ComponentId, ComponentTicks, Components, StorageType, Tick, TickCells},
@@ -1022,13 +1022,13 @@ unsafe fn get_component_and_ticks(
     storage_type: StorageType,
     entity: Entity,
     location: EntityLocation,
-) -> Option<(Ptr<'_>, TickCells<'_>, Option<Arc<AtomicU32>>, MaybeUnsafeCellLocation<'_>)> {
+) -> Option<(Ptr<'_>, TickCells<'_>, Option<ArchetypeChangeRef>, MaybeUnsafeCellLocation<'_>)> {
     match storage_type {
         StorageType::Table => {
             let components = world.fetch_table(location, component_id)?;
             let arhcetype = world.archetypes().get(location.archetype_id);
             let archetype_tick = arhcetype.map(|archetype| 
-                archetype.get_any_change_arc()
+                archetype.get_change_ref(component_id)
             );
 
             // SAFETY: archetypes only store valid table_rows and caller ensure aliasing rules
@@ -1050,7 +1050,7 @@ unsafe fn get_component_and_ticks(
                 Some((
                     ptr,
                     tick_cell,
-                    world.archetypes().get(location.archetype_id).map(|archetype| archetype.get_any_change_arc()),
+                    world.archetypes().get(location.archetype_id).map(|archetype| archetype.get_change_ref(component_id)),
                     change_location,
                 ))
             } else {

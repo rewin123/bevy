@@ -707,7 +707,7 @@ unsafe impl<'a, T: Resource> SystemParam for ResMut<'a, T> {
                 changed: value.ticks.changed,
                 last_run: system_meta.last_run,
                 this_run: change_tick,
-                archetype_any_changed: None,
+                archetype_changed: None,
             },
             #[cfg(feature = "track_change_detection")]
             changed_by: value.changed_by,
@@ -740,7 +740,7 @@ unsafe impl<'a, T: Resource> SystemParam for Option<ResMut<'a, T>> {
                     changed: value.ticks.changed,
                     last_run: system_meta.last_run,
                     this_run: change_tick,
-                    archetype_any_changed: None,
+                    archetype_changed: None,
                 },
                 #[cfg(feature = "track_change_detection")]
                 changed_by: value.changed_by,

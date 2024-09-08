@@ -2001,7 +2001,7 @@ impl World {
                 changed: &mut ticks.changed,
                 last_run: last_change_tick,
                 this_run: change_tick,
-                archetype_any_changed: None // there are no archetype for resources
+                archetype_changed: None // there are no archetype for resources
             },
             #[cfg(feature = "track_change_detection")]
             changed_by: &mut _caller,

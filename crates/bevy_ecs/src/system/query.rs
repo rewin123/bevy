@@ -1,12 +1,8 @@
 use crate::{
-    batching::BatchingStrategy,
-    component::Tick,
-    entity::Entity,
-    query::{
+    archetype::ArchetypeId, batching::BatchingStrategy, component::Tick, entity::Entity, query::{
         QueryCombinationIter, QueryData, QueryEntityError, QueryFilter, QueryIter, QueryManyIter,
         QueryParIter, QuerySingleError, QueryState, ROQueryItem, ReadOnlyQueryData,
-    },
-    world::unsafe_world_cell::UnsafeWorldCell,
+    }, world::unsafe_world_cell::UnsafeWorldCell
 };
 use std::borrow::Borrow;
 
@@ -1602,6 +1598,38 @@ impl<'w, 's, D: ReadOnlyQueryData, F: QueryFilter> Query<'w, 's, D, F> {
                 .as_readonly()
                 .iter_unchecked_manual(self.world, self.last_run, self.this_run)
         }
+    }
+
+    pub fn any_structural_changes(&self) -> bool {
+        for archetype_id in self.state.matched_archetypes.ones() {
+            let structural_change = self.world.archetypes().get(ArchetypeId::new(archetype_id))
+                .unwrap()
+                .get_structural_change_tick();
+
+            if structural_change.is_newer_than(self.last_run, self.this_run) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    pub fn any_change(&self) -> bool {
+        if self.any_structural_changes() {
+            return true;
+        }
+
+        for archetype_id in self.state.matched_archetypes.ones() {
+            let archetype = self.world.archetypes().get(ArchetypeId::new(archetype_id)).unwrap();
+            for c_id in self.state.component_access.access.component_reads() {
+                let component_tick = archetype.get_component_change_tick(c_id);
+                if component_tick.is_newer_than(self.last_run, self.this_run) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }
 

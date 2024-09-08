@@ -1,9 +1,7 @@
 //! Types that detect when their internal data mutate.
 
 use crate::{
-    component::{Tick, TickCells},
-    ptr::PtrMut,
-    system::Resource,
+    archetype::ArchetypeChangeRef, component::{Tick, TickCells}, ptr::PtrMut, system::Resource
 };
 #[cfg(feature = "track_change_detection")]
 use bevy_ptr::ThinSlicePtr;
@@ -324,8 +322,8 @@ macro_rules! change_detection_mut_impl {
             #[track_caller]
             fn set_changed(&mut self) {
                 *self.ticks.changed = self.ticks.this_run;
-                if let Some(tick) = &self.ticks.archetype_any_changed {
-                    tick.store(self.ticks.this_run.get(), std::sync::atomic::Ordering::Relaxed);
+                if let Some(archetype_changed) = &mut self.ticks.archetype_changed {
+                    archetype_changed.set_tick(self.ticks.this_run);
                 }
                 #[cfg(feature = "track_change_detection")]
                 {
@@ -394,7 +392,7 @@ macro_rules! impl_methods {
                         changed: self.ticks.changed,
                         last_run: self.ticks.last_run,
                         this_run: self.ticks.this_run,
-                        archetype_any_changed: self.ticks.archetype_any_changed.clone(),
+                        archetype_changed: self.ticks.archetype_changed.take()
                     },
                     #[cfg(feature = "track_change_detection")]
                     changed_by: self.changed_by,
@@ -504,7 +502,7 @@ impl<'w> Ticks<'w> {
 pub(crate) struct TicksMut<'w> {
     pub(crate) added: &'w mut Tick,
     pub(crate) changed: &'w mut Tick,
-    pub(crate) archetype_any_changed: Option<Arc<AtomicU32>>,
+    pub(crate) archetype_changed: Option<ArchetypeChangeRef>,
     pub(crate) last_run: Tick,
     pub(crate) this_run: Tick,
 }
@@ -517,7 +515,7 @@ impl<'w> TicksMut<'w> {
         cells: TickCells<'w>,
         last_run: Tick,
         this_run: Tick,
-        archetype_any_changed: Option<Arc<AtomicU32>>,
+        archetype_changed: Option<ArchetypeChangeRef>,
     ) -> Self {
         Self {
             // SAFETY: Caller ensures there is no alias to the cell.
@@ -526,7 +524,7 @@ impl<'w> TicksMut<'w> {
             changed: unsafe { cells.changed.deref_mut() },
             last_run,
             this_run,
-            archetype_any_changed,
+            archetype_changed,
         }
     }
 }
@@ -892,7 +890,7 @@ impl<'w, T: ?Sized> Mut<'w, T> {
         last_changed: &'w mut Tick,
         last_run: Tick,
         this_run: Tick,
-        archetype_any_changed: Option<Arc<AtomicU32>>,
+        archetype_changed: Option<ArchetypeChangeRef>,
         #[cfg(feature = "track_change_detection")] caller: &'w mut &'static Location<'static>,
     ) -> Self {
         Self {
@@ -902,7 +900,7 @@ impl<'w, T: ?Sized> Mut<'w, T> {
                 changed: last_changed,
                 last_run,
                 this_run,
-                archetype_any_changed,
+                archetype_changed
             },
             #[cfg(feature = "track_change_detection")]
             changed_by: caller,
@@ -987,7 +985,7 @@ impl<'w> MutUntyped<'w> {
                 changed: self.ticks.changed,
                 last_run: self.ticks.last_run,
                 this_run: self.ticks.this_run,
-                archetype_any_changed: self.ticks.archetype_any_changed.clone(),
+                archetype_changed: self.ticks.archetype_changed.take()
             },
             #[cfg(feature = "track_change_detection")]
             changed_by: self.changed_by,
@@ -1199,13 +1197,9 @@ mod tests {
     use std::panic::Location;
 
     use crate::{
-        self as bevy_ecs,
-        change_detection::{
+        self as bevy_ecs, archetype::ArchetypeChangeRef, change_detection::{
             Mut, NonSendMut, Ref, ResMut, TicksMut, CHECK_TICK_THRESHOLD, MAX_CHANGE_AGE,
-        },
-        component::{Component, ComponentTicks, Tick},
-        system::{IntoSystem, Query, System},
-        world::World,
+        }, component::{Component, ComponentTicks, Tick}, system::{IntoSystem, Query, System}, world::World
     };
 
     use super::{DetectChanges, DetectChangesMut, MutUntyped};
@@ -1325,7 +1319,7 @@ mod tests {
             changed: &mut component_ticks.changed,
             last_run: Tick::new(3),
             this_run: Tick::new(4),
-            archetype_any_changed: None,
+            archetype_changed: None,
         };
         let mut res = R {};
         #[cfg(feature = "track_change_detection")]
@@ -1351,7 +1345,10 @@ mod tests {
             added: Tick::new(1),
             changed: Tick::new(3),
         };
-        let archetype_any_change_tick = Arc::new(AtomicU32::new(2));
+        let archetype_changed = ArchetypeChangeRef {
+            last_change_tick: Arc::new(AtomicU32::new(3)),
+            component_change_tick: Arc::new(AtomicU32::new(3)),
+        };
         let mut res = R {};
         #[cfg(feature = "track_change_detection")]
         let mut caller = Location::caller();
@@ -1362,7 +1359,7 @@ mod tests {
             &mut component_ticks.changed,
             Tick::new(2), // last_run
             Tick::new(4), // this_run
-            Some(archetype_any_change_tick),
+            Some(archetype_changed),
             #[cfg(feature = "track_change_detection")]
             &mut caller,
         );
@@ -1382,7 +1379,7 @@ mod tests {
             changed: &mut component_ticks.changed,
             last_run: Tick::new(3),
             this_run: Tick::new(4),
-            archetype_any_changed: None,
+            archetype_changed: None,
         };
         let mut res = R {};
         #[cfg(feature = "track_change_detection")]
@@ -1413,13 +1410,16 @@ mod tests {
             added: Tick::new(1),
             changed: Tick::new(2),
         };
-        let archetype_any_change_tick = Arc::new(AtomicU32::new(2));
+        let archetype_changed = ArchetypeChangeRef {
+            last_change_tick: Arc::new(AtomicU32::new(3)),
+            component_change_tick: Arc::new(AtomicU32::new(3)),
+        };
         let ticks = TicksMut {
             added: &mut component_ticks.added,
             changed: &mut component_ticks.changed,
             last_run,
             this_run,
-            archetype_any_changed: Some(archetype_any_change_tick.clone()),
+            archetype_changed: Some(archetype_changed),
         };
 
         let mut outer = Outer(0);
@@ -1505,13 +1505,16 @@ mod tests {
             added: Tick::new(1),
             changed: Tick::new(2),
         };
-        let archetype_any_change_tick = Arc::new(AtomicU32::new(2));
+        let archetype_changed = ArchetypeChangeRef {
+            last_change_tick: Arc::new(AtomicU32::new(2)),
+            component_change_tick: Arc::new(AtomicU32::new(2)),
+        };
         let ticks = TicksMut {
             added: &mut component_ticks.added,
             changed: &mut component_ticks.changed,
             last_run,
             this_run,
-            archetype_any_changed: Some(archetype_any_change_tick.clone()),
+            archetype_changed: Some(archetype_changed),
         };
 
         let mut value: i32 = 5;
@@ -1546,13 +1549,16 @@ mod tests {
             added: Tick::new(1),
             changed: Tick::new(2),
         };
-        let archetype_any_change_tick = Arc::new(AtomicU32::new(2));
+        let archetype_changed = ArchetypeChangeRef {
+            last_change_tick: Arc::new(AtomicU32::new(2)),
+            component_change_tick: Arc::new(AtomicU32::new(2)),
+        };
         let ticks = TicksMut {
             added: &mut component_ticks.added,
             changed: &mut component_ticks.changed,
             last_run: Tick::new(3),
             this_run: Tick::new(4),
-            archetype_any_changed: Some(archetype_any_change_tick.clone()),
+            archetype_changed: Some(archetype_changed),
         };
         let mut c = C {};
         #[cfg(feature = "track_change_detection")]
@@ -1570,6 +1576,7 @@ mod tests {
         assert_eq!(2, into_mut.ticks.changed.get());
         assert_eq!(3, into_mut.ticks.last_run.get());
         assert_eq!(4, into_mut.ticks.this_run.get());
-        assert_eq!(2, into_mut.ticks.archetype_any_changed.unwrap().load(std::sync::atomic::Ordering::Relaxed));
+        assert_eq!(2, into_mut.ticks.archetype_changed.as_ref().unwrap().last_change_tick.load(std::sync::atomic::Ordering::Relaxed));
+        assert_eq!(2, into_mut.ticks.archetype_changed.as_ref().unwrap().component_change_tick.load(std::sync::atomic::Ordering::Relaxed));
     }
 }

@@ -939,7 +939,8 @@ impl<'w> BundleInserter<'w> {
                     caller,
                 );
                 // set that archetype has changed
-                archetype.set_change_tick(self.change_tick);
+                let contributed_components = bundle_info.contributed_components();
+                archetype.set_many_component_ticks(contributed_components, self.change_tick);
 
                 (archetype, location)
             }
