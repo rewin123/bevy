@@ -33,6 +33,8 @@ fn setup(mut commands: Commands) {
 }
 
 fn change_component(time: Res<Time>, mut query: Query<(Entity, &mut MyComponent)>) {
+
+
     for (entity, mut component) in &mut query {
         if rand::thread_rng().gen_bool(0.1) {
             let new_component = MyComponent(time.elapsed_seconds().round());

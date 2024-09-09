@@ -1572,6 +1572,6 @@ mod tests {
         assert_eq!(2, into_mut.ticks.changed.get());
         assert_eq!(3, into_mut.ticks.last_run.get());
         assert_eq!(4, into_mut.ticks.this_run.get());
-        assert_eq!(2, into_mut.ticks.archetype_changed.as_ref().unwrap().last_change_tick.load(std::sync::atomic::Ordering::Relaxed));
+        assert_eq!(2, into_mut.ticks.archetype_changed.as_ref().unwrap().component_change_tick.load(std::sync::atomic::Ordering::Relaxed));
     }
 }

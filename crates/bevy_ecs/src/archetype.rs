@@ -29,7 +29,7 @@ use crate::{
 use bevy_utils::HashMap;
 use std::{
     hash::Hash,
-    ops::{Index, IndexMut, RangeFrom}, sync::{atomic::AtomicU32, Arc},
+    ops::{Index, IndexMut, RangeFrom}, sync::{atomic::AtomicU32, Arc, Mutex},
 };
 
 /// An opaque location within a [`Archetype`].
@@ -359,7 +359,7 @@ pub(crate) struct ArchetypeChangeTicks {
     pub(crate) last_structural_change_tick: Tick,
     pub(crate) lass_add_tick: Tick,
     pub(crate) last_remove_tick: Tick,
-    pub(crate) component_change_ticks: ImmutableSparseSet<ComponentId, Arc<AtomicU32>>,
+    pub(crate) component_change_ticks: Mutex<SparseSet<ComponentId, Arc<AtomicU32>>>, //TODO: Make this an immutable sparce set
 }
 
 impl ArchetypeChangeTicks {
@@ -369,7 +369,7 @@ impl ArchetypeChangeTicks {
             last_structural_change_tick: Tick::new(0),
             lass_add_tick: Tick::new(0),
             last_remove_tick: Tick::new(0),
-            component_change_ticks: component_ticks.into_immutable(),
+            component_change_ticks: Mutex::new(component_ticks),
         }
     }
 
@@ -384,17 +384,21 @@ impl ArchetypeChangeTicks {
     }
 
     pub fn set_component(&mut self, component_id: ComponentId, tick: Tick) {
-        if let Some(change_tick) = self.component_change_ticks.get(component_id) {
+        let guard = self.component_change_ticks.lock().unwrap();
+        if let Some(change_tick) = guard.get(component_id) {
             change_tick.store(tick.get(), std::sync::atomic::Ordering::SeqCst);
         }
     }
 
     pub fn get_component_ref(&self, component_id: ComponentId) -> ArchetypeChangeRef {
 
-        let component_change_tick = if let Some(tick) = self.component_change_ticks.get(component_id) {
+        let mut guard = self.component_change_ticks.lock().unwrap();
+        let component_change_tick = if let Some(tick) = guard.get(component_id) {
             tick.clone()
         } else {
-            panic!("Component not found in ArchetypeChangeTicks");
+            let tick = Arc::new(AtomicU32::new(self.last_structural_change_tick.get()));
+            guard.insert(component_id, tick.clone());
+            tick
         };
 
         ArchetypeChangeRef {
@@ -783,16 +787,15 @@ impl Archetype {
     }
 
     pub(crate) fn get_component_change_tick(&self, component_id: ComponentId) -> Tick {
-        let tick = self.change_ticks.component_change_ticks.get(component_id)
+        let guard = self.change_ticks.component_change_ticks.lock().unwrap();
+        let tick = guard.get(component_id)
             .unwrap()
             .load(std::sync::atomic::Ordering::Relaxed);
         Tick::new(tick)
     }
 
     pub(crate) fn set_component_change_tick(&mut self, component_id: ComponentId, tick: Tick) {
-        self.change_ticks.component_change_ticks.get(component_id)
-            .unwrap()
-            .store(tick.get(), std::sync::atomic::Ordering::Relaxed);
+        self.change_ticks.set_component(component_id, tick);
     }
 
     pub(crate) fn set_many_component_ticks(&mut self, component_ids: &[ComponentId], tick: Tick) {

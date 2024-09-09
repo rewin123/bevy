@@ -1263,7 +1263,8 @@ pub struct WriteFetch<'w, T> {
     last_run: Tick,
     this_run: Tick,
 
-    archetype: Option<&'w Archetype>
+    archetype: Option<&'w Archetype>,
+    component_id: ComponentId,
 }
 
 impl<T> Clone for WriteFetch<'_, T> {
@@ -1316,6 +1317,7 @@ unsafe impl<'__w, T: Component> WorldQuery for &'__w mut T {
             last_run,
             this_run,
             archetype: None,
+            component_id
         }
     }
 
@@ -1390,7 +1392,7 @@ unsafe impl<'__w, T: Component> WorldQuery for &'__w mut T {
                         this_run: fetch.this_run,
                         last_run: fetch.last_run,
                         archetype_changed: fetch.archetype.map(|archetype| {
-                            archetype.get_change_ref()
+                            archetype.get_change_ref(fetch.component_id)
                         })
                     },
                     #[cfg(feature = "track_change_detection")]
@@ -1411,7 +1413,7 @@ unsafe impl<'__w, T: Component> WorldQuery for &'__w mut T {
                 Mut {
                     value: component.assert_unique().deref_mut(),
                     ticks: TicksMut::from_tick_cells(ticks, fetch.last_run, fetch.this_run, fetch.archetype.map(|archetype| {
-                        archetype.get_any_change_arc()
+                        archetype.get_change_ref(fetch.component_id)
                     })),
                     #[cfg(feature = "track_change_detection")]
                     changed_by: _caller.deref_mut(),
