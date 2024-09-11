@@ -1495,6 +1495,40 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
             this_run: self.this_run,
         }
     }
+
+    pub fn any_structural_changes(&self) -> bool {
+        for archetype_id in self.state.matched_archetypes.ones() {
+            let structural_change = self.world.archetypes().get(ArchetypeId::new(archetype_id))
+                .unwrap()
+                .get_structural_change_tick();
+
+            println!("structural_change: {:?} l_tick: {:?} this_run: {:?}", structural_change, self.last_run, self.this_run);
+            if structural_change.is_newer_than(self.last_run, self.this_run) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    pub fn any_changes(&self) -> bool {
+        if self.any_structural_changes() {
+            return true;
+        }
+
+        for archetype_id in self.state.matched_archetypes.ones() {
+            let archetype = self.world.archetypes().get(ArchetypeId::new(archetype_id)).unwrap();
+            for c_id in self.state.component_access.access.component_reads() {
+                let component_tick = archetype.get_component_change_tick(c_id);
+                println!("c_tick: {:?} l_tick: {:?} this_run: {:?}", component_tick, self.last_run, self.this_run);
+                if component_tick.is_newer_than(self.last_run, self.this_run) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
 }
 
 impl<'w, 's, D: QueryData, F: QueryFilter> IntoIterator for &'w Query<'_, 's, D, F> {
@@ -1596,37 +1630,7 @@ impl<'w, 's, D: ReadOnlyQueryData, F: QueryFilter> Query<'w, 's, D, F> {
         }
     }
 
-    pub fn any_structural_changes(&self) -> bool {
-        for archetype_id in self.state.matched_archetypes.ones() {
-            let structural_change = self.world.archetypes().get(ArchetypeId::new(archetype_id))
-                .unwrap()
-                .get_structural_change_tick();
-
-            if structural_change.is_newer_than(self.last_run, self.this_run) {
-                return true;
-            }
-        }
-
-        false
-    }
-
-    pub fn any_change(&self) -> bool {
-        if self.any_structural_changes() {
-            return true;
-        }
-
-        for archetype_id in self.state.matched_archetypes.ones() {
-            let archetype = self.world.archetypes().get(ArchetypeId::new(archetype_id)).unwrap();
-            for c_id in self.state.component_access.access.component_reads() {
-                let component_tick = archetype.get_component_change_tick(c_id);
-                if component_tick.is_newer_than(self.last_run, self.this_run) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
+    
 }
 
 /// Type returned from [`Query::transmute_lens`] containing the new [`QueryState`].

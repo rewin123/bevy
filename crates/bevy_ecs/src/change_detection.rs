@@ -324,6 +324,9 @@ macro_rules! change_detection_mut_impl {
                 *self.ticks.changed = self.ticks.this_run;
                 if let Some(archetype_changed) = &mut self.ticks.archetype_changed {
                     archetype_changed.set_tick(self.ticks.this_run);
+                    println!("archetype changed:");
+                } else {
+                    println!("Warning: archetype changed not set");
                 }
                 #[cfg(feature = "track_change_detection")]
                 {

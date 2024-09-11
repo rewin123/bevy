@@ -34,7 +34,6 @@ fn setup(mut commands: Commands) {
 
 fn change_component(time: Res<Time>, mut query: Query<(Entity, &mut MyComponent)>) {
 
-
     for (entity, mut component) in &mut query {
         if rand::thread_rng().gen_bool(0.1) {
             let new_component = MyComponent(time.elapsed_seconds().round());
@@ -79,6 +78,15 @@ fn change_detection(
     changed_components: Query<Ref<MyComponent>, Changed<MyComponent>>,
     my_resource: Res<MyResource>,
 ) {
+
+    if changed_components.any_changes() {
+        info!("Query<(Entity, &mut MyComponent)> changed");
+    }
+
+    if changed_components.any_structural_changes() {
+        info!("Query<(Entity, &mut MyComponent)> changed structurally");
+    }
+
     for component in &changed_components {
         // By default, you can only tell that a component was changed.
         //
