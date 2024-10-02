@@ -1316,7 +1316,7 @@ unsafe impl<'__w, T: Component> WorldQuery for &'__w mut T {
             }),
             last_run,
             this_run,
-            archetype: None,
+            archetype: None, // TODO
             component_id
         }
     }
